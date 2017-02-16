@@ -2,12 +2,12 @@
 #include "watch_global.h"
 #include "main_window.h"
 
-static Window *s_window;
-static Layer *s_canvas;
-static Layer *s_battery_layer;
-static Layer *s_date_layer;
+static Window    *s_window;
+static Layer     *s_canvas;
+static Layer     *s_battery_layer;
+static Layer     *s_date_layer;
 static BitmapLayer *s_background_layer;
-static GBitmap *s_background_bitmap;
+static GBitmap   *s_background_bitmap;
 
 static int s_hours, s_minutes, s_seconds;
 static int date_persist;
@@ -54,14 +54,15 @@ GColor battery_color(int val) {
     }
 }
 
+// Update The battery level indicator
 static void battery_layer_update_proc(Layer *layer, GContext *ctx) {
-    GRect bounds = layer_get_bounds(layer);
+    GRect bounds  = layer_get_bounds(layer);
     GPoint center = grect_center_point(&bounds);
     int x1, y1, x2, y2, radial;
     int charge_state;
     
     if (s_battery_state.is_charging && s_battery_state.charge_percent < 99) {
-        // trigger the dirty marking in the canvas updates
+    // Charging, trigger the dirty marking in the canvas updates
         s_charging += 10;
         if (s_charging > 100) {
             s_charging = 10;
@@ -71,10 +72,14 @@ static void battery_layer_update_proc(Layer *layer, GContext *ctx) {
         s_charging = 0;
     }
     
-    // Only animate charging if we also show the seconds hand
-    charge_state = (s_charging > 0 && s_show_seconds)
-        ? s_charging
-        : s_battery_state.charge_percent;
+    // Animate charging if we charge and config flag is set
+    if (s_charging > 0 && s_show_animations) {
+        charge_state = s_charging;
+        tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
+    } else {
+        charge_state = s_battery_state.charge_percent;
+        tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
+    }
     
     /****
      * Calculate the radial from 0 to 120 degrees
@@ -82,14 +87,14 @@ static void battery_layer_update_proc(Layer *layer, GContext *ctx) {
      * use 8 different colors depending on charge level
      * if we animate charging, do so per second in 15 degree segments
      ****/
-    GRect frame = grect_inset(bounds, GEdgeInsets(10 * INSET));
-    radial = charge_state * 120 / 100;
+    GRect frame  = grect_inset(bounds, GEdgeInsets(10 * INSET));
+    radial       = charge_state * 120 / 100;
     charge_state = charge_state / 10;
     graphics_context_set_fill_color(ctx, battery_color(charge_state));
     graphics_fill_radial(ctx, frame, GOvalScaleModeFitCircle, 5, DEG_TO_TRIGANGLE(120), DEG_TO_TRIGANGLE(120 + radial));
     graphics_context_set_stroke_color(ctx, GColorBlack);
     graphics_draw_arc(ctx, frame, GOvalScaleModeFitCircle, DEG_TO_TRIGANGLE(120), DEG_TO_TRIGANGLE(120 + radial));
-    frame = grect_inset(frame, GEdgeInsets(5));
+    frame        = grect_inset(frame, GEdgeInsets(5));
     graphics_draw_arc(ctx, frame, GOvalScaleModeFitCircle, DEG_TO_TRIGANGLE(120), DEG_TO_TRIGANGLE(120 + radial));
 #if PBL_ROUND
     int radius = 35;
@@ -108,9 +113,11 @@ static void battery_layer_update_proc(Layer *layer, GContext *ctx) {
     graphics_draw_line(ctx, GPoint(x1, y1), GPoint(x2, y2));
 }
 
+// Update the Date field
 static void date_layer_update_proc(Layer *layer, GContext *ctx) {
-    GRect bounds = layer_get_bounds(layer);
-    GPoint center = grect_center_point(&bounds);
+    GRect bounds    = layer_get_bounds(layer);
+    GPoint center   = grect_center_point(&bounds);
+    // Todo: Fix these magic numbers!
     GRect dateframe = GRect(center.x - 13, 45, 26, 20);
     char date_str[3];
     
@@ -125,64 +132,61 @@ static void date_layer_update_proc(Layer *layer, GContext *ctx) {
                        GTextAlignmentCenter, NULL);
 }
 
+// Update the watch hands
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
-  GRect bounds = layer_get_bounds(layer);
-  GPoint center = grect_center_point(&bounds);
-  int x, y;
+    GRect bounds = layer_get_bounds(layer);
+    GPoint center = grect_center_point(&bounds);
+    int x, y;
   
-  // Minute hand
-  int minute_angle = get_angle_for_minute(s_minutes);
-  // Correct angle since the base path is rotated by 90 degrees to the 9 o'clock position
-  minute_angle = minute_angle < 270 ? minute_angle + 90 : minute_angle - 270; 
-  graphics_context_set_fill_color(ctx, MINUTES_COLOR);
-  gpath_rotate_to(s_minute_hand_path_ptr, DEG_TO_TRIGANGLE(minute_angle));
-  gpath_move_to(s_minute_hand_path_ptr, center);
-  gpath_draw_filled(ctx, s_minute_hand_path_ptr);
-  gpath_draw_outline(ctx, s_minute_hand_path_ptr);
+    // Minute hand
+    int minute_angle = get_angle_for_minute(s_minutes);
+    // Correct angle since the base path is rotated by 90 degrees to the 9 o'clock position
+    minute_angle = minute_angle < 270 ? minute_angle + 90 : minute_angle - 270; 
+    graphics_context_set_fill_color(ctx, MINUTES_COLOR);
+    gpath_rotate_to(s_minute_hand_path_ptr, DEG_TO_TRIGANGLE(minute_angle));
+    gpath_move_to(s_minute_hand_path_ptr, center);
+    gpath_draw_filled(ctx, s_minute_hand_path_ptr);
+    gpath_draw_outline(ctx, s_minute_hand_path_ptr);
 
-  // Hour hand
-  int hour_angle = get_angle_for_hour(s_hours);
-  // Correct angle since the base path is rotated by 90 degrees to the 9 o'clock position
-  hour_angle = hour_angle < 270 ? hour_angle + 90 : hour_angle - 270;
-  // Move between hours according to original minute angle
-  hour_angle = hour_angle + (get_angle_for_minute(s_minutes) / 12);
-  graphics_context_set_fill_color(ctx, HOURS_COLOR);
-  gpath_rotate_to(s_hour_hand_path_ptr, DEG_TO_TRIGANGLE(hour_angle));
-  gpath_move_to(s_hour_hand_path_ptr, center);
-  gpath_draw_filled(ctx, s_hour_hand_path_ptr);
-  gpath_draw_outline(ctx, s_hour_hand_path_ptr);
+    // Hour hand
+    int hour_angle = get_angle_for_hour(s_hours);
+    // Correct angle since the base path is rotated by 90 degrees to the 9 o'clock position
+    hour_angle = hour_angle < 270 ? hour_angle + 90 : hour_angle - 270;
+    // Move between hours according to original minute angle
+    hour_angle = hour_angle + (get_angle_for_minute(s_minutes) / 12);
+    graphics_context_set_fill_color(ctx, HOURS_COLOR);
+    gpath_rotate_to(s_hour_hand_path_ptr, DEG_TO_TRIGANGLE(hour_angle));
+    gpath_move_to(s_hour_hand_path_ptr, center);
+    gpath_draw_filled(ctx, s_hour_hand_path_ptr);
+    gpath_draw_outline(ctx, s_hour_hand_path_ptr);
 
-  // Seconds hand
-  if (s_show_seconds) {
-      int seconds_angle = get_angle_for_minute(s_seconds);
-      int seconds_length = PBL_IF_ROUND_ELSE(39, 31);
-      graphics_context_set_fill_color(ctx, SECONDS_COLOR);
-      graphics_context_set_stroke_color(ctx, SECONDS_COLOR);
-      y = (-cos_lookup(DEG_TO_TRIGANGLE(seconds_angle)) * seconds_length / TRIG_MAX_RATIO) + center.y;
-      x = (sin_lookup(DEG_TO_TRIGANGLE(seconds_angle)) * seconds_length / TRIG_MAX_RATIO) + center.x;
-      // Start off with the empty Circle
+    // Seconds hand
+    if (s_show_seconds) {
+        int seconds_angle = get_angle_for_minute(s_seconds);
+        int seconds_length = PBL_IF_ROUND_ELSE(39, 31);
+        graphics_context_set_fill_color(ctx, SECONDS_COLOR);
+        graphics_context_set_stroke_color(ctx, SECONDS_COLOR);
+        y = (-cos_lookup(DEG_TO_TRIGANGLE(seconds_angle)) * seconds_length / TRIG_MAX_RATIO) + center.y;
+        x = (sin_lookup(DEG_TO_TRIGANGLE(seconds_angle)) * seconds_length / TRIG_MAX_RATIO) + center.x;
+        // Start off with the empty Circle
 #if PBL_ROUND
-      GRect frame = GRect(x - 11, y - 11, 22, 22);
-      graphics_fill_radial(ctx, frame, GOvalScaleModeFitCircle, 5, 0, DEG_TO_TRIGANGLE(360));
+        GRect frame = GRect(x - 11, y - 11, 22, 22);
+        graphics_fill_radial(ctx, frame, GOvalScaleModeFitCircle, 5, 0, DEG_TO_TRIGANGLE(360));
 #else
-      GRect frame = GRect(x - 8, y - 8, 16, 16);
-      graphics_fill_radial(ctx, frame, GOvalScaleModeFitCircle, 4, 0, DEG_TO_TRIGANGLE(360));
+        GRect frame = GRect(x - 8, y - 8, 16, 16);
+        graphics_fill_radial(ctx, frame, GOvalScaleModeFitCircle, 4, 0, DEG_TO_TRIGANGLE(360));
 #endif
-      // Now the hands, again adjusted for 90 degrees offset
-      seconds_angle = seconds_angle < 270 ? seconds_angle + 90 : seconds_angle - 270;
-      gpath_rotate_to(s_sec_hand_in_path_ptr, DEG_TO_TRIGANGLE(seconds_angle));
-      gpath_rotate_to(s_sec_hand_out_path_ptr, DEG_TO_TRIGANGLE(seconds_angle));
-      gpath_move_to(s_sec_hand_in_path_ptr, center);
-      gpath_move_to(s_sec_hand_out_path_ptr, center);
-      gpath_draw_filled(ctx, s_sec_hand_in_path_ptr);
-      gpath_draw_outline(ctx, s_sec_hand_in_path_ptr);
-      gpath_draw_filled(ctx, s_sec_hand_out_path_ptr);
-      gpath_draw_outline(ctx, s_sec_hand_out_path_ptr);
-  }
-    // Take the seconds tick counter to update the battery charge indicator
-  if (s_charging > 0) {
-      layer_mark_dirty(s_battery_layer);
-  }
+        // Now the hands, again adjusted for 90 degrees offset
+        seconds_angle = seconds_angle < 270 ? seconds_angle + 90 : seconds_angle - 270;
+        gpath_rotate_to(s_sec_hand_in_path_ptr, DEG_TO_TRIGANGLE(seconds_angle));
+        gpath_rotate_to(s_sec_hand_out_path_ptr, DEG_TO_TRIGANGLE(seconds_angle));
+        gpath_move_to(s_sec_hand_in_path_ptr, center);
+        gpath_move_to(s_sec_hand_out_path_ptr, center);
+        gpath_draw_filled(ctx, s_sec_hand_in_path_ptr);
+        gpath_draw_outline(ctx, s_sec_hand_in_path_ptr);
+        gpath_draw_filled(ctx, s_sec_hand_out_path_ptr);
+        gpath_draw_outline(ctx, s_sec_hand_out_path_ptr);
+    }
 }
 
 static void handle_battery(BatteryChargeState charge_state) {
@@ -256,31 +260,46 @@ void main_window_push() {
 }
 
 void main_window_update(int date, int hours, int minutes, int seconds) {
-    s_hours = hours;
-    s_minutes = minutes;
+    s_hours   = hours;
     s_seconds = seconds > 59 ? 0 : seconds;
+    /* If the charger tick handler is active we only want to update the hands
+     * if the seconds hand is enabled as well or if the minute hand has
+     * to move
+     */
+    if (s_minutes != minutes || s_show_seconds) {
+        s_minutes = minutes;
+        layer_mark_dirty(s_canvas);
+    }
 
-    layer_mark_dirty(s_canvas);
     // In case we got a day change, update the date field
     if (date != date_persist) {
         date_persist = date;
         layer_mark_dirty(s_date_layer);
     }
+    
+    // If charging and animations are on, mark the battery layer dirty
+    if (s_charging > 0 && s_show_animations) {
+        layer_mark_dirty(s_battery_layer);
+    }
 }
 
 void prv_inbox_received_handler(DictionaryIterator *iter, void *context) {
-    // Read boolean preferences
+    int message_flag;
+    // Check if seconds got en/disabled
     Tuple *second_tick_t = dict_find(iter, MESSAGE_KEY_SecondTick);
     if(second_tick_t) {
-        int enable_seconds = second_tick_t->value->int32 == 1;
-        if (enable_seconds != s_show_seconds) {
-            s_show_seconds = enable_seconds;
-            tick_timer_service_subscribe(enable_seconds ? SECOND_UNIT : MINUTE_UNIT, tick_handler);
+        message_flag = second_tick_t->value->int32 == 1;
+        if (message_flag != s_show_seconds) {
+            s_show_seconds = message_flag;
+            tick_timer_service_subscribe(message_flag ? SECOND_UNIT : MINUTE_UNIT, tick_handler);
+            layer_mark_dirty(s_canvas);
         }
     }
 
     Tuple *animations_t = dict_find(iter, MESSAGE_KEY_Animations);
     if(animations_t) {
-        bool animations = animations_t->value->int32 == 1;
+        message_flag = animations_t->value->int32 == 1; 
+        s_show_animations = message_flag;
+        layer_mark_dirty(s_battery_layer);
     }
 }

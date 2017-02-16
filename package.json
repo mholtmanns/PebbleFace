@@ -10,7 +10,7 @@
             "configurable"
         ],
         "displayName": "MHHWatch",
-        "enableMultiJS": false,
+        "enableMultiJS": true,
         "messageKeys": [
             "SecondTick",
             "Animations"
@@ -29,7 +29,8 @@
                     "file": "images/Station_Clock_no_hands_basalt.png",
                     "name": "IMAGE_BACKGROUND",
                     "targetPlatforms": [
-                        "basalt"
+                        "basalt",
+                        "emery"
                     ],
                     "type": "bitmap"
                 },
