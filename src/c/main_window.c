@@ -267,3 +267,20 @@ void main_window_update(int date, int hours, int minutes, int seconds) {
         layer_mark_dirty(s_date_layer);
     }
 }
+
+void prv_inbox_received_handler(DictionaryIterator *iter, void *context) {
+    // Read boolean preferences
+    Tuple *second_tick_t = dict_find(iter, MESSAGE_KEY_SecondTick);
+    if(second_tick_t) {
+        int enable_seconds = second_tick_t->value->int32 == 1;
+        if (enable_seconds != s_show_seconds) {
+            s_show_seconds = enable_seconds;
+            tick_timer_service_subscribe(enable_seconds ? SECOND_UNIT : MINUTE_UNIT, tick_handler);
+        }
+    }
+
+    Tuple *animations_t = dict_find(iter, MESSAGE_KEY_Animations);
+    if(animations_t) {
+        bool animations = animations_t->value->int32 == 1;
+    }
+}

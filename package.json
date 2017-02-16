@@ -11,7 +11,10 @@
         ],
         "displayName": "MHHWatch",
         "enableMultiJS": false,
-        "messageKeys": [],
+        "messageKeys": [
+            "SecondTick",
+            "Animations"
+        ],
         "projectType": "native",
         "resources": {
             "media": [

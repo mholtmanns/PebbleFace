@@ -14,7 +14,8 @@
 
 #define INSET PBL_IF_ROUND_ELSE(5, 3)
 
-static const int s_show_seconds = 0;
+static int s_show_seconds = 0;
+void tick_handler(struct tm *time_now, TimeUnits changed);
 
 #ifdef PBL_ROUND
 #define BG_COLOR        GColorWhite
